@@ -42,8 +42,10 @@
 
 #include <getopt.h>
 #include <cstdlib>
-//#include "../RF24.h";
 #include <RF24/RF24.h>
+
+#include <curl/curl.h>
+
 
 // ......................................................
 // Global declarations
@@ -74,8 +76,10 @@ const int Relayed=12;
 const int role_pin = 7;
 const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 
+// Config
 int RFChannel = 0;
-
+string EmonCmsBaseUrl = "";
+string EmonCmsApiKey = "";
 
 // -------------------- SUPPORT FUNCTIONS ---------------------------
 // Prepare the RF24 radio
@@ -208,7 +212,13 @@ static bool ParseOptions(string OptsFilename)
     {
         while ( getline (OptsFile,line) )
         {
-			if (String2Upper(line.substr(0,9))=="RFCHANNEL") String2Int(line.substr(10,line.length()-10),RFChannel);
+			if (String2Upper(line.substr(0,9))=="RFCHANNEL") {
+				String2Int(line.substr(10,line.length()-10),RFChannel);
+			} else if (String2Upper(line.substr(0,10))=="EMONCMSURL") {
+				EmonCmsBaseUrl = line.substr(11,line.length()-11);
+			} else if (String2Upper(line.substr(0,10))=="EMONCMSKEY") {
+				EmonCmsApiKey = line.substr(11,line.length()-11);
+			} 
             
         }
         OptsFile.close();
@@ -220,6 +230,8 @@ static bool ParseOptions(string OptsFilename)
     }
     printf("Settings after reading options file\n");
     printf("RF Channel %i\n",RFChannel);
+    printf("EmonCMS BaseUrl %s\n",EmonCmsBaseUrl.c_str());
+    printf("EmonCMS ApiKey %s\n",EmonCmsApiKey.c_str());
     printf("\n");
     return true;
 }
@@ -238,9 +250,12 @@ int main( int argc, char *argv[]){
 	double temperature;
 	long counter; 
 	string OptsFilename;
+	CURL *curl;
+	CURLcode res;
+	
+	curl = curl_easy_init();
 
-	counter=0;
-        
+	counter=0;	
         
 	// Check arguments for filename
 	if (argc != 2) //Check correct number of arguments we're supplied
@@ -260,9 +275,8 @@ int main( int argc, char *argv[]){
 	// Initialise radio (and print settings to screen)
 	rf24setup();
 	radio.startListening(); // Start listening for incoming messages
-
-	// Finishing
-	while (1)
+	
+        while (1)
 	{
 
 		while ( ! radio.available() ) { // Wait for a message
@@ -282,9 +296,36 @@ int main( int argc, char *argv[]){
 		   temperature = tempint * 0.0625;
 		deviceid = ((uint64_t)message[DeviceID0]<<56) + ((uint64_t)message[DeviceID1]<<48) + ((uint64_t)message[DeviceID2]<<40) + ((uint64_t)message[DeviceID3]<<32) + ((uint64_t)message[DeviceID4]<<24) + ((uint64_t)message[DeviceID5]<<16) + ((uint64_t)message[DeviceID6]<<8) + (uint64_t)message[DeviceID7];
 
-		// printf("Message received: %ld %s nodec=%x %6.2f DeviceID:%016llX Test:%d Relayed:%d\n",counter,currentDateTime().c_str(),message[Counter],temperature,deviceid,message[Test],message[Relayed]);
-		printf("{deviceId:\"%016llX\",temp:%6.2f}\n", deviceid, temperature);
+		printf("Message received: %ld %s nodec=%x %6.2f DeviceID:%016llX Test:%d Relayed:%d\n",counter,currentDateTime().c_str(),message[Counter],temperature,deviceid,message[Test],message[Relayed]);
+		//printf("{deviceId:\"%016llX\",temp:%6.2f}\n", deviceid, temperature);
+		
+		if("" != EmonCmsBaseUrl && "" != EmonCmsApiKey && NULL != curl)
+		{
+			int node = 10;
+			char url[2048];
+                        const char *base = EmonCmsBaseUrl.c_str();
+                        const char *key = EmonCmsApiKey.c_str();
+			
+			sprintf(url, "%s/input/post.json?node=%d&json={%016llX_temp:%.2f}&apikey=%s", 
+				base, node, deviceid, temperature, key);
+			
+                        curl_easy_setopt(curl, CURLOPT_URL, url);
+			// example.com is redirected, so we tell libcurl to follow redirection
+			curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+			// Perform the request, res will get the return code 
+			res = curl_easy_perform(curl);
+			// Check for errors 
+			if(res != CURLE_OK)
+			{
+			    fprintf(stderr, "curl_easy_perform() failed: %s\n",
+						curl_easy_strerror(res));
+			}
+		}
 	}
+
+	// always cleanup
+	curl_easy_cleanup(curl);
 
 	syslog (LOG_NOTICE, "NRFText terminated.");
 	closelog();

@@ -1,1 +1,3 @@
 RFCHANNEL:120
+EMONCMSURL:http://emonbase.local/emoncms
+EMONCMSKEY:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
