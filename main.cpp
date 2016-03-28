@@ -205,13 +205,15 @@ static string String2Upper(const string & s)
 static bool ParseOptions(string OptsFilename)
 {
     string line;
-
-  
+	
+	printf("Loading options from '%s'\n", OptsFilename.c_str());
+	
     ifstream OptsFile (OptsFilename.c_str());
     if (OptsFile.is_open())
     {
         while ( getline (OptsFile,line) )
         {
+			printf("|%s\n", line.c_str());
 			if (String2Upper(line.substr(0,9))=="RFCHANNEL") {
 				String2Int(line.substr(10,line.length()-10),RFChannel);
 			} else if (String2Upper(line.substr(0,10))=="EMONCMSURL") {
@@ -253,6 +255,7 @@ int main( int argc, char *argv[]){
 	CURL *curl;
 	CURLcode res;
 	
+	printf("RF24Gateway\n");
 	curl = curl_easy_init();
 
 	counter=0;	
@@ -276,9 +279,10 @@ int main( int argc, char *argv[]){
 	rf24setup();
 	radio.startListening(); // Start listening for incoming messages
 	
-        while (1)
+	fflush(stdout);
+	
+    while (1)
 	{
-
 		while ( ! radio.available() ) { // Wait for a message
 			msleep(10);
 		}
@@ -298,6 +302,7 @@ int main( int argc, char *argv[]){
 
 		printf("Message received: %ld %s nodec=%x %6.2f DeviceID:%016llX Test:%d Relayed:%d\n",counter,currentDateTime().c_str(),message[Counter],temperature,deviceid,message[Test],message[Relayed]);
 		//printf("{deviceId:\"%016llX\",temp:%6.2f}\n", deviceid, temperature);
+		fflush(stdout);
 		
 		if("" != EmonCmsBaseUrl && "" != EmonCmsApiKey && NULL != curl)
 		{
@@ -307,27 +312,33 @@ int main( int argc, char *argv[]){
                         const char *key = EmonCmsApiKey.c_str();
 			
 			sprintf(url, "%s/input/post.json?node=%d&json={%016llX_temp:%.2f}&apikey=%s", 
-				base, node, deviceid, temperature, key);
+						 base, node, deviceid, temperature, key);
 			
-                        curl_easy_setopt(curl, CURLOPT_URL, url);
-			// example.com is redirected, so we tell libcurl to follow redirection
+            curl_easy_setopt(curl, CURLOPT_URL, url);
 			curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
+			
 			// Perform the request, res will get the return code 
+			printf("Uploading: "); fflush(stdout);
 			res = curl_easy_perform(curl);
+			printf("\n"); fflush(stdout);
+
 			// Check for errors 
 			if(res != CURLE_OK)
 			{
 			    fprintf(stderr, "curl_easy_perform() failed: %s\n",
 						curl_easy_strerror(res));
 			}
+			
 		}
+		
 	}
 
 	// always cleanup
 	curl_easy_cleanup(curl);
 
-	syslog (LOG_NOTICE, "NRFText terminated.");
-	closelog();
+	//syslog (LOG_NOTICE, "NRFText terminated.");
+	//closelog();
+	
 	return EXIT_SUCCESS;
 }
