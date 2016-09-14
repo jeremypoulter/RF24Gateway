@@ -80,6 +80,7 @@ const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
 int RFChannel = 0;
 string EmonCmsBaseUrl = "";
 string EmonCmsApiKey = "";
+bool SendAck = false;
 
 // -------------------- SUPPORT FUNCTIONS ---------------------------
 // Prepare the RF24 radio
@@ -220,6 +221,8 @@ static bool ParseOptions(string OptsFilename)
 				EmonCmsBaseUrl = line.substr(11,line.length()-11);
 			} else if (String2Upper(line.substr(0,10))=="EMONCMSKEY") {
 				EmonCmsApiKey = line.substr(11,line.length()-11);
+			} else if (String2Upper(line.substr(0,7))=="SENDACK") {
+				SendAck = 'Y' == line[8];
 			} 
             
         }
@@ -234,6 +237,7 @@ static bool ParseOptions(string OptsFilename)
     printf("RF Channel %i\n",RFChannel);
     printf("EmonCMS BaseUrl %s\n",EmonCmsBaseUrl.c_str());
     printf("EmonCMS ApiKey %s\n",EmonCmsApiKey.c_str());
+    printf("Send Ack %s\n", SendAck ? "Yes" : "No");
     printf("\n");
     return true;
 }
@@ -300,8 +304,24 @@ int main( int argc, char *argv[]){
 		   temperature = tempint * 0.0625;
 		deviceid = ((uint64_t)message[DeviceID0]<<56) + ((uint64_t)message[DeviceID1]<<48) + ((uint64_t)message[DeviceID2]<<40) + ((uint64_t)message[DeviceID3]<<32) + ((uint64_t)message[DeviceID4]<<24) + ((uint64_t)message[DeviceID5]<<16) + ((uint64_t)message[DeviceID6]<<8) + (uint64_t)message[DeviceID7];
 
-		printf("Message received: %ld %s nodec=%x %6.2f DeviceID:%016llX Test:%d Relayed:%d\n",counter,currentDateTime().c_str(),message[Counter],temperature,deviceid,message[Test],message[Relayed]);
-		//printf("{deviceId:\"%016llX\",temp:%6.2f}\n", deviceid, temperature);
+		printf("Message received: %ld %s nodec=%d %6.2f DeviceID:%016llX Test:%d Relayed:%d\n",
+                counter,
+                currentDateTime().c_str(),
+                message[Counter],
+                temperature,
+                deviceid,
+                message[Test],
+                message[Relayed]);
+
+        if(SendAck) {
+            radio.stopListening(); // stop listening so we can send an acknowledgement
+            msleep(50);
+		    radio.writeAckPayload(2,&message,13);
+            msleep(50);
+	        radio.startListening(); // Start listening for incoming messages
+		    printf("ACK\n");
+        }
+
 		fflush(stdout);
 		
 		if("" != EmonCmsBaseUrl && "" != EmonCmsApiKey && NULL != curl)
@@ -319,7 +339,7 @@ int main( int argc, char *argv[]){
 
 			
 			// Perform the request, res will get the return code 
-			printf("Uploading: "); fflush(stdout);
+			printf("EmonCMS POST: "); fflush(stdout);
 			res = curl_easy_perform(curl);
 			printf("\n"); fflush(stdout);
 
