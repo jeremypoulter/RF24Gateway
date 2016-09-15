@@ -11,7 +11,7 @@ Download the prerequisites
 
 ```
 sudo apt-get update
-sudo apt-get install libcurl4-openssl-dev
+sudo apt-get install libcurl4-openssl-dev libjsoncpp-dev libmosquitto-dev
 ```
 
 Install and build the RF24 library

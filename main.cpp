@@ -50,6 +50,7 @@
 
 #include <curl/curl.h>
 #include <json/json.h>
+#include <mosquitto.h>
 
 // ......................................................
 // Global declarations
@@ -88,6 +89,7 @@ string EmonCmsApiKey = "";
 bool SendAck = false;
 
 string mqtt_server = "";
+int mqtt_port = 1883;
 string mqtt_topic = "";
 string mqtt_user = "";
 string mqtt_pass = "";
@@ -238,23 +240,29 @@ static bool ParseOptions(string OptsFilename)
 
 // -------------------- MAIN ---------------------------
 
-int main( int argc, char *argv[]){
+int main( int argc, char *argv[])
+{
 
 	// Declarations
-	uint8_t message[13];
+    long counter = 0; 
 	uint64_t deviceid;
-	int tempint;
 	double temperature;
-	long counter; 
 	string OptsFilename;
+
+    // cURL stuff for EmonCMS
 	CURL *curl;
 	CURLcode res;
-	
+
+    // MQTT stuff
+	char clientid[24];
+	struct mosquitto *mosq = NULL;
+    int rc = 0;
+
 	printf("RF24Gateway\n");
+
+    // Initialise cURL
 	curl = curl_easy_init();
 
-	counter=0;	
-        
 	// Check arguments for filename
 	if (argc != 2) //Check correct number of arguments we're supplied
 	{
@@ -273,6 +281,30 @@ int main( int argc, char *argv[]){
 	// Initialise radio (and print settings to screen)
 	rf24setup();
 
+    if("" != mqtt_server)
+    {
+        // Initialise MQTT
+        mosquitto_lib_init();
+
+        memset(clientid, 0, 24);
+        snprintf(clientid, 23, "RF24Gateway_%d", getpid());
+        mosq = mosquitto_new(clientid, true, 0);
+        if(mosq) 
+        {
+            if("" != mqtt_user && "" != mqtt_pass) {
+                mosquitto_username_pw_set(mosq, mqtt_user.c_str(), mqtt_pass.c_str());
+            }
+
+            // mosquitto_connect_callback_set(mosq, connect_callback);
+            // mosquitto_message_callback_set(mosq, message_callback);
+
+            rc = mosquitto_connect(mosq, mqtt_server.c_str(), mqtt_port, 60);
+            if(0 != rc) {
+                fprintf(stderr, "MQTT connection error\n");
+            }
+        }
+    }
+
 #ifndef TEST
 	radio.startListening(); // Start listening for incoming messages
 #else 
@@ -283,9 +315,23 @@ int main( int argc, char *argv[]){
 	
     while (1)
 	{
+        if(NULL != mosq)
+        {
+            if(MOSQ_ERR_SUCCESS != rc) {
+                // Was a connection error last time, try to reconnect
+				mosquitto_reconnect(mosq);
+            }
+            rc = mosquitto_loop(mosq, -1, 1);
+        }
+
+
 #ifndef TEST
-		while ( ! radio.available() ) { // Wait for a message
+        uint8_t message[13];
+        int tempint;
+
+		if ( ! radio.available() ) { // Wait for a message
 			msleep(10);
+            continue;
 		}
 
 		radio.read( &message,13); // Get the message
@@ -319,26 +365,42 @@ int main( int argc, char *argv[]){
 		    printf("ACK\n");
         }
 #else
-        sleep(1);
+        // Wait to receive a radio message
+        static int somewhatHackySimulation = 0;
+        if(++somewhatHackySimulation < 10)
+        {
+			msleep(10);
+            continue;
+        }
+        somewhatHackySimulation = 0;
+
         deviceid = 0x822F762B3ACF2B22LL;
-        temperature += rand() - 0.5;
+        temperature += (double)((rand() % 100) - 50) / 100.0;
+		counter++;
+
+        printf("Message received: %ld %s %6.2f DeviceID:%016lX\n",
+                counter,
+                currentDateTime().c_str(),
+                temperature,
+                deviceid);
+
 #endif
 
 		fflush(stdout);
 		
+        // Publish to EmonCMS
 		if("" != EmonCmsBaseUrl && "" != EmonCmsApiKey && NULL != curl)
 		{
 			int node = 10;
 			char url[2048];
-                        const char *base = EmonCmsBaseUrl.c_str();
-                        const char *key = EmonCmsApiKey.c_str();
+            const char *base = EmonCmsBaseUrl.c_str();
+            const char *key = EmonCmsApiKey.c_str();
 			
-			sprintf(url, "%s/input/post.json?node=%d&json={%016llX_temp:%.2f}&apikey=%s", 
+			sprintf(url, "%s/input/post.json?node=%d&json={%016lX_temp:%.2f}&apikey=%s", 
 						 base, node, deviceid, temperature, key);
 			
             curl_easy_setopt(curl, CURLOPT_URL, url);
 			curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
 			
 			// Perform the request, res will get the return code 
 			printf("EmonCMS POST: "); fflush(stdout);
@@ -354,6 +416,20 @@ int main( int argc, char *argv[]){
 			
 		}
 		
+        // Publish to MQTT
+        if(NULL != mosq)
+        {
+            char device[32];
+            snprintf(device, 32, "%016lX", deviceid);
+
+            char topic[256];
+            snprintf(topic, 256, "%s/%s/temperature", mqtt_topic.c_str(), device);
+
+            char value[32];
+            snprintf(value, 32, "%.2f", temperature);
+
+            mosquitto_publish(mosq, NULL, topic, strlen(value), value, 0, false);
+        }
 	}
 
 	// always cleanup
@@ -361,6 +437,10 @@ int main( int argc, char *argv[]){
 
 	//syslog (LOG_NOTICE, "NRFText terminated.");
 	//closelog();
+
+    if(mosq) {
+		mosquitto_destroy(mosq);
+    }
 	
 	return EXIT_SUCCESS;
 }

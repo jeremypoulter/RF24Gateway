@@ -4,7 +4,7 @@ LIBS = -lrf24-bcm
 #LIBS = 
 
 C_FLAGS += -Wall -std=c++11 $(shell pkg-config jsoncpp --cflags)
-LIBS += -lcurl $(shell pkg-config jsoncpp --libs)
+LIBS += -lcurl -lmosquitto $(shell pkg-config jsoncpp --libs)
 
 TARGET = RF24Gateway
 
