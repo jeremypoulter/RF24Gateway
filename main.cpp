@@ -241,11 +241,9 @@ static bool ParseOptions(string OptsFilename)
 int main( int argc, char *argv[]){
 
 	// Declarations
-	uint8_t message[13];
+    long counter; 
 	uint64_t deviceid;
-	int tempint;
 	double temperature;
-	long counter; 
 	string OptsFilename;
 	CURL *curl;
 	CURLcode res;
@@ -253,7 +251,7 @@ int main( int argc, char *argv[]){
 	printf("RF24Gateway\n");
 	curl = curl_easy_init();
 
-	counter=0;	
+	counter=0;
         
 	// Check arguments for filename
 	if (argc != 2) //Check correct number of arguments we're supplied
@@ -284,6 +282,9 @@ int main( int argc, char *argv[]){
     while (1)
 	{
 #ifndef TEST
+        uint8_t message[13];
+        int tempint;
+
 		while ( ! radio.available() ) { // Wait for a message
 			msleep(10);
 		}
@@ -319,9 +320,17 @@ int main( int argc, char *argv[]){
 		    printf("ACK\n");
         }
 #else
-        sleep(1);
+        msleep(1000);
         deviceid = 0x822F762B3ACF2B22LL;
         temperature += rand() - 0.5;
+		counter++;
+
+        printf("Message received: %ld %s %6.2f DeviceID:%016lX\n",
+                counter,
+                currentDateTime().c_str(),
+                temperature,
+                deviceid);
+
 #endif
 
 		fflush(stdout);
@@ -333,7 +342,7 @@ int main( int argc, char *argv[]){
                         const char *base = EmonCmsBaseUrl.c_str();
                         const char *key = EmonCmsApiKey.c_str();
 			
-			sprintf(url, "%s/input/post.json?node=%d&json={%016llX_temp:%.2f}&apikey=%s", 
+			sprintf(url, "%s/input/post.json?node=%d&json={%016lX_temp:%.2f}&apikey=%s", 
 						 base, node, deviceid, temperature, key);
 			
             curl_easy_setopt(curl, CURLOPT_URL, url);
