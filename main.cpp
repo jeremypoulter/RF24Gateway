@@ -26,6 +26,7 @@
 // Inclusions
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <string.h>
 #include <string>
@@ -42,36 +43,40 @@
 
 #include <getopt.h>
 #include <cstdlib>
+
+#ifndef TEST
 #include <RF24/RF24.h>
+#endif
 
 #include <curl/curl.h>
-
+#include <json/json.h>
 
 // ......................................................
 // Global declarations
 using namespace std;
+
+#ifndef TEST
 //RF24 radio("/dev/spidev0.0",8000000 , 25);  //spi device, speed and CSN,only CSN is NEEDED in RPI
 RF24 radio(RPI_V2_GPIO_P1_18, 0, BCM2835_SPI_SPEED_8MHZ);
-
 //RF24 radio(RPI_BPLUS_GPIO_J8_15,RPI_BPLUS_GPIO_J8_24, BCM2835_SPI_SPEED_8MHZ); 
+#endif
 
 //MYSQL *mysql1;
 
 // Packet structure constants
-const int DeviceID0=0;
-const int DeviceID1=1;
-const int DeviceID2=2;
-const int DeviceID3=3;
-const int DeviceID4=4;
-const int DeviceID5=5;
-const int DeviceID6=6;
-const int DeviceID7=7;
-
-const int Counter=8;
-const int Temp0=9;
-const int Temp1=10;
-const int Test=11;
-const int Relayed=12;
+#define DeviceID0       0
+#define DeviceID1       1
+#define DeviceID2       2
+#define DeviceID3       3
+#define DeviceID4       4
+#define DeviceID5       5
+#define DeviceID6       6
+#define DeviceID7       7
+#define Counter         8
+#define Temp0           9
+#define Temp1           10
+#define Test            11
+#define Relayed         12
 
 const int role_pin = 7;
 const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
@@ -82,10 +87,16 @@ string EmonCmsBaseUrl = "";
 string EmonCmsApiKey = "";
 bool SendAck = false;
 
+string mqtt_server = "";
+string mqtt_topic = "";
+string mqtt_user = "";
+string mqtt_pass = "";
+
 // -------------------- SUPPORT FUNCTIONS ---------------------------
 // Prepare the RF24 radio
 
 static void rf24setup(void){
+#ifndef TEST
   printf("\nPreparing interface\n");
   radio.begin();
   printf("Begin\n");
@@ -100,6 +111,7 @@ static void rf24setup(void){
   radio.startListening();
   radio.printDetails();
   printf("Details printed\n");
+#endif
 }
 
 // Get current date/time, format is YYYY-MM-DD HH:mm:ss
@@ -190,56 +202,35 @@ static int msleep(unsigned long milisec)
     return 1;
 }
 
-static bool String2Int(const std::string& str, int& result)
-{
-    return sscanf(str.c_str(), "%d", &result) == 1;
-}
-
-static string String2Upper(const string & s)
-{
-    string ret(s.size(), char());
-    for(unsigned int i = 0; i < s.size(); ++i)
-        ret[i] = (s[i] <= 'z' && s[i] >= 'a') ? s[i]-('a'-'A') : s[i];
-    return ret;
-}
-
 static bool ParseOptions(string OptsFilename)
 {
-    string line;
-	
-	printf("Loading options from '%s'\n", OptsFilename.c_str());
-	
-    ifstream OptsFile (OptsFilename.c_str());
-    if (OptsFile.is_open())
+    ifstream configStream;
+    configStream.open(OptsFilename);
+    if(configStream.is_open()) 
     {
-        while ( getline (OptsFile,line) )
+        Json::Value config;
+        configStream >> config;
+        RFChannel = config.get("rfChannel", 120).asInt();
+        SendAck = config.get("sendAck", false).asBool();
+
+        if(config.isMember("emoncms"))
         {
-			printf("|%s\n", line.c_str());
-			if (String2Upper(line.substr(0,9))=="RFCHANNEL") {
-				String2Int(line.substr(10,line.length()-10),RFChannel);
-			} else if (String2Upper(line.substr(0,10))=="EMONCMSURL") {
-				EmonCmsBaseUrl = line.substr(11,line.length()-11);
-			} else if (String2Upper(line.substr(0,10))=="EMONCMSKEY") {
-				EmonCmsApiKey = line.substr(11,line.length()-11);
-			} else if (String2Upper(line.substr(0,7))=="SENDACK") {
-				SendAck = 'Y' == line[8];
-			} 
-            
+            EmonCmsBaseUrl = config["emoncms"].get("url", "http://emoncms.org/").asString();
+            EmonCmsApiKey = config["emoncms"].get("key", "").asString(); 
         }
-        OptsFile.close();
+
+        if(config.isMember("mqtt"))
+        {
+            mqtt_server = config["mqtt"].get("server", "").asString();
+            mqtt_topic = config["mqtt"].get("topic", "").asString();
+            mqtt_user = config["mqtt"].get("user", "").asString();
+            mqtt_pass = config["mqtt"].get("pass", "").asString();
+        }
+
+        return true;
     }
-    else 
-    {
-        printf("Unable to open specified options file\n"); 
-        return false;
-    }
-    printf("Settings after reading options file\n");
-    printf("RF Channel %i\n",RFChannel);
-    printf("EmonCMS BaseUrl %s\n",EmonCmsBaseUrl.c_str());
-    printf("EmonCMS ApiKey %s\n",EmonCmsApiKey.c_str());
-    printf("Send Ack %s\n", SendAck ? "Yes" : "No");
-    printf("\n");
-    return true;
+
+    return false;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////
@@ -281,12 +272,18 @@ int main( int argc, char *argv[]){
 
 	// Initialise radio (and print settings to screen)
 	rf24setup();
+
+#ifndef TEST
 	radio.startListening(); // Start listening for incoming messages
-	
+#else 
+    temperature = 22.0;
+#endif
+
 	fflush(stdout);
 	
     while (1)
 	{
+#ifndef TEST
 		while ( ! radio.available() ) { // Wait for a message
 			msleep(10);
 		}
@@ -321,6 +318,11 @@ int main( int argc, char *argv[]){
 	        radio.startListening(); // Start listening for incoming messages
 		    printf("ACK\n");
         }
+#else
+        sleep(1);
+        deviceid = 0x822F762B3ACF2B22LL;
+        temperature += rand() - 0.5;
+#endif
 
 		fflush(stdout);
 		
