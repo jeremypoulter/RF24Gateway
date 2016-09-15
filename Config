@@ -1,3 +1,7 @@
-RFCHANNEL:120
-EMONCMSURL:http://emonbase.local/emoncms
-EMONCMSKEY:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+{
+    "rfChannel":120,
+    "emoncms": {
+        "url":"http://emonbase.local/emoncms",
+        "key":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+}
