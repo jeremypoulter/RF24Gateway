@@ -1,7 +1,7 @@
-#C_FLAGS = -Ofast -mfpu=vfp -mfloat-abi=hard -march=armv6zk -mtune=arm1176jzf-s  
-#LIBS = -lrf24-bcm 
-C_FLAGS = -ggdb -DTEST
-LIBS = 
+C_FLAGS = -Ofast -mfpu=vfp -mfloat-abi=hard -march=armv6zk -mtune=arm1176jzf-s  
+LIBS = -lrf24-bcm 
+#C_FLAGS = -ggdb -DTEST
+#LIBS = 
 
 C_FLAGS += -Wall -std=c++11 $(shell pkg-config jsoncpp --cflags)
 LIBS += -lcurl $(shell pkg-config jsoncpp --libs)
