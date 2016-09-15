@@ -322,7 +322,7 @@ int main( int argc, char *argv[]){
 #else
         msleep(1000);
         deviceid = 0x822F762B3ACF2B22LL;
-        temperature += rand() - 0.5;
+        temperature += (double)((rand() % 100) - 50) / 100.0;
 		counter++;
 
         printf("Message received: %ld %s %6.2f DeviceID:%016lX\n",
@@ -339,15 +339,14 @@ int main( int argc, char *argv[]){
 		{
 			int node = 10;
 			char url[2048];
-                        const char *base = EmonCmsBaseUrl.c_str();
-                        const char *key = EmonCmsApiKey.c_str();
+            const char *base = EmonCmsBaseUrl.c_str();
+            const char *key = EmonCmsApiKey.c_str();
 			
 			sprintf(url, "%s/input/post.json?node=%d&json={%016lX_temp:%.2f}&apikey=%s", 
 						 base, node, deviceid, temperature, key);
 			
             curl_easy_setopt(curl, CURLOPT_URL, url);
 			curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
 			
 			// Perform the request, res will get the return code 
 			printf("EmonCMS POST: "); fflush(stdout);
