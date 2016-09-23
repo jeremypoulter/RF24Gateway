@@ -347,7 +347,7 @@ int main( int argc, char *argv[])
 		   temperature = tempint * 0.0625;
 		deviceid = ((uint64_t)message[DeviceID0]<<56) + ((uint64_t)message[DeviceID1]<<48) + ((uint64_t)message[DeviceID2]<<40) + ((uint64_t)message[DeviceID3]<<32) + ((uint64_t)message[DeviceID4]<<24) + ((uint64_t)message[DeviceID5]<<16) + ((uint64_t)message[DeviceID6]<<8) + (uint64_t)message[DeviceID7];
 
-		printf("Message received: %ld %s nodec=%d %6.2f DeviceID:%016llX Test:%d Relayed:%d\n",
+		printf("Message received: %ld %s nodec=%d %6.2f DeviceID:%016" PRIx64 " Test:%d Relayed:%d\n",
                 counter,
                 currentDateTime().c_str(),
                 message[Counter],
@@ -378,7 +378,7 @@ int main( int argc, char *argv[])
         temperature += (double)((rand() % 100) - 50) / 100.0;
 		counter++;
 
-        printf("Message received: %ld %s %6.2f DeviceID:%016lX\n",
+        printf("Message received: %ld %s %6.2f DeviceID:%016" PRIx64 "\n",
                 counter,
                 currentDateTime().c_str(),
                 temperature,
@@ -396,7 +396,7 @@ int main( int argc, char *argv[])
             const char *base = EmonCmsBaseUrl.c_str();
             const char *key = EmonCmsApiKey.c_str();
 			
-			sprintf(url, "%s/input/post.json?node=%d&json={%016lX_temp:%.2f}&apikey=%s", 
+			sprintf(url, "%s/input/post.json?node=%d&json={%016" PRIx64 "_temp:%.2f}&apikey=%s", 
 						 base, node, deviceid, temperature, key);
 			
             curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -420,7 +420,7 @@ int main( int argc, char *argv[])
         if(NULL != mosq)
         {
             char device[32];
-            snprintf(device, 32, "%016lX", deviceid);
+            snprintf(device, 32, "%016" PRIx64, deviceid);
 
             char topic[256];
             snprintf(topic, 256, "%s/%s/temperature", mqtt_topic.c_str(), device);
