@@ -1,0 +1,13 @@
+[Unit]
+Description=RF24 Gateway server
+After=network.target auditd.service
+
+[Service]
+EnvironmentFile=-/etc/default/rf24gateway
+ExecStart=/usr/local/bin/RF24Gateway /etc/RF24Gateway $RF24_OPTS
+KillMode=process
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+Alias=rf24gateway.service

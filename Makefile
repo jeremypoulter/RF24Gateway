@@ -14,7 +14,9 @@ all: $(TARGET)
 
 install: $(TARGET) /etc/$(TARGET)
 	cp $(TARGET) /usr/local/bin/$(TARGET)
-	cp service /etc/init.d/$(TARGET)
+	cp rf24gateway.service /lib/systemd/system/
+	systemctl enable rf24gateway.service
+	systemctl start rf24gateway.service
 
 clean:
 	rm $(TARGET)
